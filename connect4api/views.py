@@ -242,12 +242,12 @@ class PlayGame(APIView):
                 data = addMove(request)
                 winStatus = checkWin(request)
                 if winStatus == "R WIN":
-                    data["winStatus"] = "R WIN"
+                    data["winStatus"] = "Red WIN"
                     state = "STOP"
                     data["state"] = state
                     request.session["state"] = state
                 elif winStatus == "Y WIN":
-                    data["winStatus"] = "Y WIN"
+                    data["winStatus"] = "Yellow WIN"
                     state = "STOP"
                     data["state"] = state
                     request.session["state"] = state
