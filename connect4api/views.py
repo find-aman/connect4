@@ -1,19 +1,9 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-import string
-
-board = [
-    [0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-]
-rowCount = [0, 0, 0, 0, 0, 0, 0]
-turnCount = 0
-state = "STOP"
+from django.contrib.sessions.backends.db import SessionStore
+from .models import MovesData
+from .serializers import Moves
 
 
 class Game(APIView):
@@ -32,27 +22,43 @@ class Game(APIView):
                 ]
                 rowCount = [0, 0, 0, 0, 0, 0, 0]
                 turnCount = 0
-                request.session["board"] = board
-                request.session["rowCount"] = rowCount
-                request.session["turnCount"] = turnCount
-                request.session["state"] = "READY"
+                s = SessionStore()
+                s["board"] = board
+                s["rowCount"] = rowCount
+                s["turnCount"] = turnCount
+                s["state"] = "READY"
+                s.create()
+                key = s.session_key
             else:
                 state = "Invalid"
-                data = {"state": state, "comment": "Invalid Parameter Value"}
+                data = {"state": state, "key": None}
                 return Response(data)
             state = "READY"
-            data = {"state": state, "comment": "Game has been reset"}
+            data = {"state": state, "key": key}
             return Response(data)
         except:
             state = "Invalid"
-            data = {"state": state, "comment": "Invalid Request"}
+            data = {"state": state, "key": None}
             return Response(data)
 
 
 class PlayGame(APIView):
+    def get(self, request, *args, **kwargs):
+        key = request.COOKIES["sessionid"]
+        qs = MovesData.objects.filter(key=key)
+        serializer = Moves(qs, many=True)
+        return Response(serializer.data)
+
     def post(self, request, *args, **kwargs):
-        def checkWin(board, rowVal, colVal):
+        def checkWin(request):
             try:
+                parameters = request.query_params
+                column = parameters.get("column")
+                colVal = int(column[0]) - 1
+                rowCount = request.session["rowCount"]
+                rowVal = rowCount[int(column[0]) - 1] - 1
+                board = request.session["board"]
+                state = request.session["state"]
                 if (colVal + 3) < 7:
                     if (
                         board[rowVal][colVal + 0]
@@ -149,36 +155,57 @@ class PlayGame(APIView):
                         elif board[rowVal][colVal] == "R":
                             return "R WIN"
             except:
-                return "Invalid Request"
+                data = {
+                    "state": state,
+                    "move": None,
+                    "winStatus": None,
+                    "data": board,
+                }
+                return data
 
-        def addMove(request, rowCount, columnValue):
+        def addMove(request):
             try:
-                global turnCount
                 parameters = request.query_params
-                columnValue = int(parameters["column"])
-                if rowCount[columnValue - 1] == 0:
-                    rowCount[columnValue - 1] += 1
+                colVal = int(parameters.get("column")[0])
+                board = request.session["board"]
+                state = request.session["state"]
+                rowCount = request.session["rowCount"]
+                turnCount = request.session["turnCount"]
+                if rowCount[colVal - 1] == 0:
+                    rowCount[colVal - 1] += 1
+                    request.session["rowCount"] = rowCount
                     if turnCount % 2 == 0:
-                        board[0][columnValue - 1] = "Y"
+                        board[0][colVal - 1] = "Y"
+                        request.session["board"] = board
                     else:
-                        board[0][columnValue - 1] = "R"
+                        board[0][colVal - 1] = "R"
+                        request.session["board"] = board
                 else:
                     if turnCount % 2 == 0:
-                        board[rowCount[columnValue - 1]][columnValue - 1] = "Y"
+                        board[rowCount[colVal - 1]][colVal - 1] = "Y"
+                        request.session["board"] = board
                     else:
-                        board[rowCount[columnValue - 1]][columnValue - 1] = "R"
-                    rowCount[columnValue - 1] += 1
+                        board[rowCount[colVal - 1]][colVal - 1] = "R"
+                        request.session["board"] = board
+                    rowCount[colVal - 1] += 1
+                    request.session["rowCount"] = rowCount
                 data = {
+                    "state": state,
                     "move": "Valid",
                     "winStatus": None,
                     "data": board,
                 }
                 turnCount += 1
+                request.session["turnCount"] = turnCount
                 return data
-            except:
-                return "Invalid Request"
+            except Exception as e:
+                return str(e)
 
-        def checkValid(column, player, state):
+        def checkValid(request):
+            parameters = request.query_params
+            column = parameters.get("column")[0]
+            player = parameters.get("player")
+            turnCount = request.session["turnCount"]
             returnVal = False
             if column is not None:
                 if int(column) in [1, 2, 3, 4, 5, 6, 7]:
@@ -203,26 +230,35 @@ class PlayGame(APIView):
             return returnVal
 
         try:
+            state = request.session["state"]
+            board = request.session["board"]
             parameters = request.query_params
             column = parameters.get("column")
             player = parameters.get("player")
-            global state
         except:
-            return Response({"state": "Invalid", "comment": "Invalid Request"})
+            return Response({"state": state, "move": None, "winStatus": None, "data": board})
         if state == "READY":
-            if checkValid(column, player, state):
-                data = addMove(request, rowCount, column)
-                winStatus = checkWin(
-                    board, rowCount[int(column[0]) - 1] - 1, int(column[0]) - 1
-                )
+            if checkValid(request):
+                data = addMove(request)
+                winStatus = checkWin(request)
                 if winStatus == "R WIN":
                     data["winStatus"] = "R WIN"
                     state = "STOP"
+                    data["state"] = state
+                    request.session["state"] = state
                 elif winStatus == "Y WIN":
                     data["winStatus"] = "Y WIN"
                     state = "STOP"
+                    data["state"] = state
+                    request.session["state"] = state
+        
+                values = MovesData(key = request.COOKIES["sessionid"],move = "Valid",column = column[0],player = player,state = request.session["state"],winstatus=winStatus)
+                values.save()
+
                 return Response(data)
             else:
-                return Response({"move": "Invalid", "board": board})
+                return Response(
+                    {"state": state, "move": "Invalid", "winSatus": None, "data": board}
+                )
         else:
-            return Response({"state": "STOP"})
+            return Response({"state": state, "move": "None", "winSatus": None, "data": board})
