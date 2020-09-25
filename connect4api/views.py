@@ -251,14 +251,16 @@ class PlayGame(APIView):
                     state = "STOP"
                     data["state"] = state
                     request.session["state"] = state
-        
                 values = MovesData(key = request.COOKIES["sessionid"],move = "Valid",column = column[0],player = player,state = request.session["state"],winstatus=winStatus)
                 values.save()
 
                 return Response(data)
             else:
+                values = MovesData(key = request.COOKIES["sessionid"],move = "Invalid",column = column[0],player = player,state = request.session["state"],winstatus=None)
+                values.save()
                 return Response(
                     {"state": state, "move": "Invalid", "winSatus": None, "data": board}
                 )
+            
         else:
             return Response({"state": state, "move": "None", "winSatus": None, "data": board})
