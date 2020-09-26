@@ -236,7 +236,7 @@ class PlayGame(APIView):
             column = parameters.get("column")
             player = parameters.get("player")
         except:
-            return Response({"state": state, "move": None, "winStatus": None, "data": board})
+            return Response({"state": "STOP", "move": None, "winStatus": None, "data": None})
         if state == "READY":
             if checkValid(request):
                 data = addMove(request)
