@@ -44,10 +44,13 @@ class Game(APIView):
 
 class PlayGame(APIView):
     def get(self, request, *args, **kwargs):
-        key = request.COOKIES["sessionid"]
-        qs = MovesData.objects.filter(key=key)
-        serializer = Moves(qs, many=True)
-        return Response(serializer.data)
+        try:
+            key = request.COOKIES["sessionid"]
+            qs = MovesData.objects.filter(key=key)
+            serializer = Moves(qs, many=True)
+            return Response(serializer.data)
+        except:
+            return Response("Key not sent/Invalid Key")
 
     def post(self, request, *args, **kwargs):
         def checkWin(request):
